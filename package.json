@@ -1,0 +1,15 @@
+{
+  "name": "taxi-trace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Highlight ATC taxi clearances on an airport chart (OSM or your own traced chart).",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "leaflet": "^1.9.4"
+  }
+}
