@@ -1,9 +1,8 @@
 // "My chart" source: an uploaded chart image plus lines you traced on it.
 //
-// On disk (trace.json) points are chart pixels [x, y] with y pointing down, so
+// In storage (trace.json) points are chart pixels [x, y] with y pointing down, so
 // the file stays meaningful even outside this app. The normalised Airport uses
 // Leaflet's CRS.Simple convention [lat, lng] = [height - y, x].
-import * as store from '../store.js';
 import { splitRefs } from '../../public/js/refs.js';
 import { splitTraced } from '../../public/js/stands.js';
 
@@ -14,11 +13,11 @@ const KINDS = new Set(['taxiway', 'runway', 'stand']);
 export const id = 'trace';
 export const label = 'My chart';
 
-export async function hasData(icao) {
+export async function hasData(store, icao) {
   return store.exists(icao, TRACE_FILE);
 }
 
-export async function load(icao) {
+export async function load(store, icao) {
   const doc = await store.readJson(icao, TRACE_FILE);
   if (!doc) return null;
   const { width, height } = doc.image;
@@ -46,7 +45,7 @@ export async function load(icao) {
 }
 
 // Accepts normalised features back from the editor.
-export async function save(icao, body) {
+export async function save(store, icao, body) {
   const doc = await store.readJson(icao, TRACE_FILE);
   if (!doc) throw Object.assign(new Error('Upload a chart image first'), { status: 400 });
   if (!Array.isArray(body?.features)) throw Object.assign(new Error('features[] required'), { status: 400 });
@@ -61,10 +60,10 @@ export async function save(icao, body) {
     }));
   doc.updatedAt = new Date().toISOString();
   await store.writeJson(icao, TRACE_FILE, doc);
-  return load(icao);
+  return load(store, icao);
 }
 
-export async function saveChart(icao, buffer, contentType, width, height) {
+export async function saveChart(store, icao, body, size, contentType, width, height) {
   const ext = IMAGE_TYPES[contentType];
   if (!ext) throw Object.assign(new Error(`Unsupported image type ${contentType} (use PNG, JPEG, WebP or GIF)`), { status: 415 });
   if (!(width > 0 && height > 0)) throw Object.assign(new Error('width and height required'), { status: 400 });
@@ -81,15 +80,16 @@ export async function saveChart(icao, buffer, contentType, width, height) {
     for (const line of doc.lines) line.points = line.points.map(([x, y]) => [round(x * sx), round(y * sy)]);
   }
 
-  await store.writeFile(icao, `chart.${ext}`, buffer);
+  await store.writeStream(icao, `chart.${ext}`, body, size, contentType);
   doc.image = { file: `chart.${ext}`, contentType, width, height, updatedAt: new Date().toISOString() };
   await store.writeJson(icao, TRACE_FILE, doc);
-  return load(icao);
+  return load(store, icao);
 }
 
-export async function chartInfo(icao) {
+export async function chart(store, icao) {
   const doc = await store.readJson(icao, TRACE_FILE);
-  return doc?.image ? { path: store.filePath(icao, doc.image.file), contentType: doc.image.contentType } : null;
+  const file = doc?.image && await store.readFile(icao, doc.image.file);
+  return file ? { ...file, contentType: doc.image.contentType } : null;
 }
 
 const round = (n) => Math.round(n * 10) / 10;

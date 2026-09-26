@@ -1,29 +1,25 @@
-// File-based persistence: one folder per airport under data/airports/<ICAO>/.
+// File-based persistence for `npm start`: one folder per airport under data/airports/<ICAO>/.
 //   meta.json      { preferredSource }
 //   osm-raw.json   cached Overpass response (normalised on every read)
 //   trace.json     your hand traces, in chart pixel coordinates
 //   chart.<ext>    uploaded chart image
-import { promises as fs } from 'node:fs';
+//
+// Store interface (server/r2-store.js implements the same one for Cloudflare):
+//   readJson(icao, name) -> value | null        writeJson(icao, name, value)
+//   exists(icao, name) -> boolean               remove(icao, name)
+//   writeStream(icao, name, webStream, size, contentType)
+//   readFile(icao, name) -> { body: webStream, size } | null
+//   listAirports() -> string[]
+import { promises as fs, createReadStream, createWriteStream } from 'node:fs';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
+import { ICAO_RE, normaliseIcao } from './api.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..', 'data', 'airports');
 
-// Also allows non-ICAO idents (e.g. private strips) since traces don't need OSM.
-const ICAO_RE = /^[A-Z0-9-]{2,8}$/;
-
-export function normaliseIcao(raw) {
-  const icao = String(raw || '').trim().toUpperCase();
-  if (!ICAO_RE.test(icao)) throw Object.assign(new Error(`Invalid airport ident "${raw}"`), { status: 400 });
-  return icao;
-}
-
-export function airportDir(icao) {
-  return path.join(ROOT, normaliseIcao(icao));
-}
-
-export function filePath(icao, name) {
-  return path.join(airportDir(icao), name);
-}
+const airportDir = (icao) => path.join(ROOT, normaliseIcao(icao));
+const filePath = (icao, name) => path.join(airportDir(icao), name);
 
 export async function readJson(icao, name) {
   try {
@@ -42,9 +38,24 @@ export async function writeJson(icao, name, value) {
   await fs.rename(tmp, target); // atomic-ish so a crash never leaves half a file
 }
 
-export async function writeFile(icao, name, buffer) {
+export async function writeStream(icao, name, body, size) {
   await fs.mkdir(airportDir(icao), { recursive: true });
-  await fs.writeFile(filePath(icao, name), buffer);
+  let written = 0;
+  const limited = Readable.fromWeb(body).on('data', (chunk) => {
+    written += chunk.length;
+    if (written > size) limited.destroy(Object.assign(new Error('Upload larger than Content-Length'), { status: 400 }));
+  });
+  await pipeline(limited, createWriteStream(filePath(icao, name)));
+}
+
+export async function readFile(icao, name) {
+  try {
+    const stat = await fs.stat(filePath(icao, name));
+    return { body: Readable.toWeb(createReadStream(filePath(icao, name))), size: stat.size };
+  } catch (err) {
+    if (err.code === 'ENOENT') return null;
+    throw err;
+  }
 }
 
 export async function exists(icao, name) {
@@ -58,15 +69,6 @@ export async function exists(icao, name) {
 
 export async function remove(icao, name) {
   await fs.rm(filePath(icao, name), { force: true });
-}
-
-export async function listFiles(icao) {
-  try {
-    return await fs.readdir(airportDir(icao));
-  } catch (err) {
-    if (err.code === 'ENOENT') return [];
-    throw err;
-  }
 }
 
 export async function listAirports() {

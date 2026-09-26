@@ -6,9 +6,8 @@
 //      take the aerodrome element's bounding box (padded) and query inside it.
 // Every request goes to all mirrors at once and the first good answer wins —
 // public Overpass servers swing between 4 s and timing out minute to minute.
-// The raw Overpass response is cached on disk and normalised on each read, so
+// The raw Overpass response is cached in the store and normalised on each read, so
 // improvements to normalisation never require a re-fetch.
-import * as store from '../store.js';
 import { splitRefs, cleanRef, looksLikeRef } from '../../public/js/refs.js';
 import { cleanStandRef } from '../../public/js/stands.js';
 
@@ -33,7 +32,7 @@ const BIG = '[out:json][timeout:60]';
 export const id = 'osm';
 export const label = 'OpenStreetMap';
 
-export async function hasData(icao) {
+export async function hasData(store, icao) {
   return store.exists(icao, CACHE_FILE);
 }
 
@@ -41,7 +40,7 @@ const inFlight = new Map(); // a retry click while fetching joins the same reque
 const standsTried = new Map(); // icao -> last attempt, for caches from before gates were fetched
 const STANDS_RETRY_MS = 10 * 60_000;
 
-export async function load(icao, { refresh = false } = {}) {
+export async function load(store, icao, { refresh = false } = {}) {
   let cached = refresh ? null : await store.readJson(icao, CACHE_FILE);
   if (!cached) {
     if (!inFlight.has(icao)) {

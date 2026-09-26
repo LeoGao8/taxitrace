@@ -4,16 +4,16 @@ import { promises as fs, createReadStream } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import net from 'node:net';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import * as store from './server/store.js';
-import { sources, getSource } from './server/sources/index.js';
-import * as trace from './server/sources/trace.js';
+import { handleApi } from './server/api.js';
 
 const PORT = Number(process.env.PORT) || 5178;
 // All interfaces, so an iPad on the same Wi-Fi can reach it. HOST=127.0.0.1 keeps it local-only.
 const HOST = process.env.HOST || '0.0.0.0';
 const PUBLIC = path.join(import.meta.dirname, 'public');
 const LEAFLET = path.join(import.meta.dirname, 'node_modules', 'leaflet', 'dist');
-const MAX_UPLOAD = 60 * 1024 * 1024;
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -27,65 +27,20 @@ const MIME = {
 };
 
 // ------------------------------------------------------------------ API
+// Same handler the Cloudflare Worker uses (server/api.js), with files under data/ as the store.
 
-const routes = [
-  ['GET', /^\/api\/sources$/, async () => Object.values(sources).map(({ id, label }) => ({ id, label }))],
-
-  ['GET', /^\/api\/airports$/, async () => Promise.all((await store.listAirports()).map(airportSummary))],
-
-  ['GET', /^\/api\/airports\/([^/]+)$/, async (req, [icao]) => airportSummary(store.normaliseIcao(icao))],
-
-  ['PUT', /^\/api\/airports\/([^/]+)\/meta$/, async (req, [icao]) => {
-    icao = store.normaliseIcao(icao);
-    const body = JSON.parse((await readBody(req, 64 * 1024)).toString('utf8'));
-    const meta = (await store.readJson(icao, 'meta.json')) || {};
-    if (body.preferredSource) meta.preferredSource = getSource(body.preferredSource).id;
-    await store.writeJson(icao, 'meta.json', meta);
-    return airportSummary(icao);
-  }],
-
-  ['GET', /^\/api\/airports\/([^/]+)\/sources\/([a-z]+)$/, async (req, [icao, src], url) => {
-    const airport = await getSource(src).load(store.normaliseIcao(icao), { refresh: url.searchParams.has('refresh') });
-    if (!airport) throw Object.assign(new Error(`No ${src} data saved for ${icao}`), { status: 404 });
-    return airport;
-  }],
-
-  ['PUT', /^\/api\/airports\/([^/]+)\/sources\/([a-z]+)$/, async (req, [icao, src]) => {
-    const source = getSource(src);
-    if (!source.save) throw Object.assign(new Error(`${source.label} is read-only`), { status: 405 });
-    const body = JSON.parse((await readBody(req, 20 * 1024 * 1024)).toString('utf8'));
-    return source.save(store.normaliseIcao(icao), body);
-  }],
-
-  ['PUT', /^\/api\/airports\/([^/]+)\/chart$/, async (req, [icao], url) => {
-    const buffer = await readBody(req, MAX_UPLOAD);
-    const type = (req.headers['content-type'] || '').split(';')[0].trim();
-    return trace.saveChart(store.normaliseIcao(icao), buffer, type,
-      Number(url.searchParams.get('width')), Number(url.searchParams.get('height')));
-  }],
-];
-
-async function airportSummary(icao) {
-  const meta = (await store.readJson(icao, 'meta.json')) || {};
-  const available = {};
-  for (const s of Object.values(sources)) available[s.id] = await s.hasData(icao);
-  return { icao, preferredSource: meta.preferredSource || null, available };
-}
-
-function readBody(req, limit) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    let size = 0;
-    req.on('data', (chunk) => {
-      size += chunk.length;
-      if (size > limit) {
-        reject(Object.assign(new Error('Upload too large'), { status: 413 }));
-        req.destroy();
-      } else chunks.push(chunk);
-    });
-    req.on('end', () => resolve(Buffer.concat(chunks)));
-    req.on('error', reject);
+async function serveApi(req, res, url) {
+  const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
+  const request = new Request(url, {
+    method: req.method,
+    headers: Object.entries(req.headers).filter(([, v]) => typeof v === 'string'),
+    body: hasBody ? Readable.toWeb(req) : undefined,
+    duplex: 'half',
   });
+  const response = await handleApi(request, store);
+  res.writeHead(response.status, Object.fromEntries(response.headers));
+  if (response.body) await pipeline(Readable.fromWeb(response.body), res);
+  else res.end();
 }
 
 // --------------------------------------------------------------- static
@@ -120,21 +75,7 @@ function sendJson(res, status, value) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   try {
-    const chart = /^\/api\/airports\/([^/]+)\/chart$/.exec(url.pathname);
-    if (chart && req.method === 'GET') {
-      const info = await trace.chartInfo(store.normaliseIcao(chart[1]));
-      return info ? serveFile(res, info.path, info.contentType) : sendJson(res, 404, { error: 'No chart' });
-    }
-
-    if (url.pathname.startsWith('/api/')) {
-      for (const [method, pattern, handler] of routes) {
-        const m = pattern.exec(url.pathname);
-        if (m && req.method === method) {
-          return sendJson(res, 200, await handler(req, m.slice(1), url));
-        }
-      }
-      return sendJson(res, 404, { error: 'No such endpoint' });
-    }
+    if (url.pathname.startsWith('/api/')) return await serveApi(req, res, url);
 
     if (url.pathname.startsWith('/vendor/leaflet/')) {
       const file = safeJoin(LEAFLET, url.pathname.slice('/vendor/leaflet/'.length));
@@ -144,9 +85,9 @@ const server = http.createServer(async (req, res) => {
     const file = safeJoin(PUBLIC, url.pathname === '/' ? 'index.html' : url.pathname);
     return file ? serveFile(res, file) : sendJson(res, 400, { error: 'Bad path' });
   } catch (err) {
-    const status = err.status || (err instanceof SyntaxError ? 400 : 500);
-    if (status >= 500) console.error(err);
-    sendJson(res, status, { error: err.message });
+    console.error(err);
+    if (res.headersSent) res.destroy();
+    else sendJson(res, err instanceof URIError ? 400 : 500, { error: err.message });
   }
 });
 
