@@ -1,0 +1,40 @@
+# Builds and deploys the site, running exactly the same `npm run build` you run locally:
+# scripts/warm.js fills data/ from OpenStreetMap, then scripts/build.js bakes it into dist/.
+#
+# The schedule is the point of this workflow: nobody has to push for the cached airport
+# data to stay current. Pushes are handled by Cloudflare Workers Builds already, so the
+# push trigger here is only useful if you turn Workers Builds off.
+name: Deploy
+
+on:
+  schedule:
+    - cron: '17 3 * * 1' # Mondays, 03:17 UTC
+  workflow_dispatch: {} # lets you run it by hand from the Actions tab
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # data/ is gitignored, so this starts empty and warm.js fetches every airport in
+      # airports.txt. An airport that fails to fetch is simply left out: the site still
+      # serves it, just by fetching it live on first view.
+      - run: npm run build
+
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: deploy --config wrangler.jsonc

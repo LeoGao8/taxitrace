@@ -1,0 +1,13 @@
+# Airports the deployed site keeps a warm OpenStreetMap cache for, one ICAO per line.
+# Add a line to add an airport; the robot picks it up on its next run.
+# Anything not listed here still works on the site, it just loads live (a few seconds slower).
+VHHH
+YBBN
+YMML
+YSCB
+YSSY
+ZBAA
+ZBAD
+ZGGG
+ZSQD
+ZSSS

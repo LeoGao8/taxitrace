@@ -425,7 +425,11 @@ pre.error {
 /* --------------------------------------------------------------- map */
 
 .leaflet-container { background: var(--map-bg); font: inherit; }
-.tiles-dark { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.4); }
+/* Dark basemap: plain OSM tiles faded over the near-black map background, which
+   reads as a dark overlay. Opacity only composites; the old invert/hue-rotate
+   filter chain re-filtered every tile on each pan/zoom frame and lagged.
+   !important beats the inline opacity Leaflet sets on the layer container. */
+.tiles-dark { opacity: 0.4 !important; }
 .leaflet-bar a, .leaflet-control-layers { background: var(--panel); color: var(--text); border-color: var(--border); }
 .leaflet-bar a:hover { background: var(--panel-2); color: var(--text); }
 .leaflet-control-layers-expanded { color: var(--text); }
@@ -441,7 +445,7 @@ pre.error {
 .route-active path.f-runway { stroke-opacity: 0.3; }
 .route-active path.f-apron { fill-opacity: 0.2; }
 .route-active .ref-label { opacity: 0.25; }
-.route-active .tiles-dark { filter: invert(1) hue-rotate(180deg) brightness(0.6) contrast(0.85) saturate(0.3); }
+.route-active .tiles-dark { opacity: 0.25 !important; }
 
 /* On your own chart the image itself carries the taxiways, so dim the chart. */
 .crs-image path.f-taxiway, .crs-image path.f-runway { stroke-opacity: 0.35; }

@@ -15,7 +15,7 @@ const BASE = {
 const DEFAULT_BASEMAP = { dark: 'Dark', light: 'Streets' };
 
 const BASEMAPS = {
-  // Standard OSM tiles inverted with CSS — a dark map that needs no API key.
+  // Standard OSM tiles dimmed under a dark overlay (see .tiles-dark) — no API key needed.
   Dark: () =>
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxNativeZoom: 19, maxZoom: 22, className: 'tiles-dark',
