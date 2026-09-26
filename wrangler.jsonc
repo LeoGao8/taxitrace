@@ -3,6 +3,9 @@
   "name": "taxitrace",
   "main": "server/worker.js",
   "compatibility_date": "2026-09-15",
+  // Runs before every deploy/dev, so a git-integration build needs no extra setup:
+  // it bakes public/ plus the committed data/airports/ into dist/.
+  "build": { "command": "npm run build" },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
@@ -10,7 +13,5 @@
     // /api/* always goes to the Worker, so the SPA fallback can never answer an API call with index.html.
     "run_worker_first": ["/api/*"]
   },
-  // Airport data (meta, OSM cache, traces, chart images) under airports/<ICAO>/.
-  "r2_buckets": [{ "binding": "DATA", "bucket_name": "taxitrace-data" }],
   "observability": { "enabled": true }
 }

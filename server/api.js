@@ -1,5 +1,5 @@
 // The JSON API as a fetch-style handler: Request in, Response out. Both hosts use it:
-// server.js (Node, files under data/) and worker.js (Cloudflare, an R2 bucket).
+// server.js (Node, files under data/) and worker.js (Cloudflare, data baked into dist/).
 // `store` is the persistence backend; see server/store.js for the interface.
 import { sources, getSource } from './sources/index.js';
 import * as trace from './sources/trace.js';
@@ -57,6 +57,12 @@ const routes = [
 export async function handleApi(req, store) {
   const url = new URL(req.url);
   try {
+    // Every mutating route is a PUT, so one check covers them all. A read-only store
+    // (see server/static-store.js) serves data baked in at build time.
+    if (req.method === 'PUT' && store.readOnly) {
+      throw Object.assign(new Error('This deployment is read-only: its airport data is baked in at build time'), { status: 405 });
+    }
+
     const chart = /^\/api\/airports\/([^/]+)\/chart$/.exec(url.pathname);
     if (chart && req.method === 'GET') {
       const file = await trace.chart(store, normaliseIcao(chart[1]));

@@ -9,7 +9,6 @@
     "build": "node scripts/build.js",
     "deploy": "npm run build && wrangler deploy",
     "dev": "npm run build && wrangler dev",
-    "upload-data": "node scripts/upload-data.js",
     "test": "node --test"
   },
   "engines": {

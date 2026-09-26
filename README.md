@@ -15,10 +15,16 @@ keeps it local-only. There is no login, so only run it on a network you trust. O
 Needs Node 18+. The only dependency is Leaflet. Everything you set up is saved under `data/airports/<ICAO>/`.
 
 **Cloudflare.** The deployed app (https://taxitrace.leogao46369.workers.dev) is a Worker with static assets:
-`npm run build` copies `public/` and Leaflet into `dist/`, and `server/worker.js` answers `/api/*` with the same
-handler as `npm start` (`server/api.js`), storing data in the R2 bucket `taxitrace-data` (`airports/<ICAO>/…`)
-so every device shares it. Pushes to `main` deploy through Workers Builds. `npm run dev` runs it locally with a
-simulated bucket; `npm run upload-data` copies `data/airports/` into the real bucket.
+`npm run build` copies `public/` and Leaflet into `dist/` and bakes in the committed `data/airports/` (plus a
+`data/manifest.json` index), and `server/worker.js` answers `/api/*` with the same handler as `npm start`
+(`server/api.js`). There is no bucket or database — the Worker reads that baked-in copy through the assets
+binding, so **the deployment is read-only**: it serves the data as committed.
+
+Editing happens locally with `npm start`, which writes under `data/airports/`. To publish what you set up, commit
+it and push — pushes to `main` build and deploy through Workers Builds, so `git push` is how the deployed data
+stays up to date. The chart editor, chart upload and preferred-source toggle all return **405** on the deployed
+copy; use the local server for those. An airport with no baked-in cache still loads live from Overpass, it just
+can't cache the response. `npm run dev` runs the Worker locally against the same built `dist/`.
 
 ## Using it
 
@@ -65,7 +71,7 @@ server.js                  local server: static files + server/api.js (no framew
 server/api.js              JSON API as Request -> Response, shared by server.js and the Worker
 server/worker.js           Cloudflare Worker entry (/api/* only; wrangler.jsonc)
 server/store.js            file persistence (npm start)
-server/r2-store.js         R2 persistence (Worker), same interface
+server/static-store.js     read-only persistence (Worker) over the baked-in dist/data/
 server/sources/index.js    source registry — every source returns the same Airport shape
 server/sources/osm.js      Overpass: aerodrome area → bbox fallback, mirrors raced in parallel, cache
 server/sources/trace.js    your traced charts

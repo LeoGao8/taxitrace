@@ -4,7 +4,7 @@
 //   trace.json     your hand traces, in chart pixel coordinates
 //   chart.<ext>    uploaded chart image
 //
-// Store interface (server/r2-store.js implements the same one for Cloudflare):
+// Store interface (server/static-store.js implements the read-only half for Cloudflare):
 //   readJson(icao, name) -> value | null        writeJson(icao, name, value)
 //   exists(icao, name) -> boolean               remove(icao, name)
 //   writeStream(icao, name, webStream, size, contentType)
