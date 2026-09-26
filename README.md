@@ -20,11 +20,17 @@ Needs Node 18+. The only dependency is Leaflet. Everything you set up is saved u
 (`server/api.js`). There is no bucket or database — the Worker reads that baked-in copy through the assets
 binding, so **the deployment is read-only**: it serves the data as committed.
 
-Editing happens locally with `npm start`, which writes under `data/airports/`. To publish what you set up, commit
-it and push — pushes to `main` build and deploy through Workers Builds, so `git push` is how the deployed data
-stays up to date. The chart editor, chart upload and preferred-source toggle all return **405** on the deployed
-copy; use the local server for those. An airport with no baked-in cache still loads live from Overpass, it just
-can't cache the response. `npm run dev` runs the Worker locally against the same built `dist/`.
+`data/` is **not** committed: it is only a cache, and the Worker refetches any airport from OpenStreetMap when
+it isn't baked in, so leaving it out of git means two machines can never disagree about it and `./update.sh` can
+never hit a merge conflict. The cost is that the deployed copy starts with an empty airport list and each first
+load takes a few seconds instead of one; type an ICAO and it fetches. If you ever do want an airport baked in
+(instant loads, and it shows in the list), commit that one folder deliberately.
+
+Run `./update.sh` to publish: it commits your local work, rebases onto origin and pushes, and Workers Builds
+deploys from that push. If it can't sort something out it stops and tells you to ask Claude, without breaking
+anything. Editing happens locally with `npm start`, which writes under `data/airports/`; the chart editor, chart
+upload and preferred-source toggle all return **405** on the deployed copy. `npm run dev` runs the Worker locally
+against the same built `dist/`.
 
 ## Using it
 
