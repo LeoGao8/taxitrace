@@ -98,3 +98,4 @@ Create `server/sources/littlenavmap.js` exporting `id`, `label`, `hasData(icao)`
 scenery database (the `taxipath` table has taxiway names and start/end coordinates per airport) and return
 `crs: 'geo'` features in the shape documented in `server/sources/index.js`. Then register it there and add a
 button to the source switch in `index.html`. The parser, highlighter and map need no changes.
+# note from another machine
