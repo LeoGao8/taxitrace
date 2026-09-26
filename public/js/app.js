@@ -647,4 +647,3 @@ else {
   showOverlay('<h2>Taxi Trace</h2><p>Enter an airport ICAO (e.g. YSSY) above and press Enter.</p>');
   els.icao.focus();
 }
-// local edit on machine A
